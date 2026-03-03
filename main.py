@@ -1,5 +1,6 @@
 import os
 import telebot
+from telebot import types
 
 TOKEN = os.getenv("TOKEN")
 ADMIN_ID = 1532248370
@@ -10,14 +11,22 @@ usuarios = {}
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.send_message(message.chat.id,
-                     "💇‍♀️ Bem-vinda ao Salão Bella!\n\nDigite /agendar para marcar seu horário.")
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    btn1 = types.KeyboardButton("📅 Agendar horário")
+    btn2 = types.KeyboardButton("📋 Ver agendamentos")
 
-@bot.message_handler(commands=['agendar'])
-def agendar(message):
+    markup.add(btn1)
+    markup.add(btn2)
+
+    bot.send_message(
+        message.chat.id,
+        "💇‍♀️ Bem-vinda ao Salão Bella!\n\nEscolha uma opção:",
+        reply_markup=markup
+    )
+   @bot.message_handler(func=lambda message: message.text == "📅 Agendar horário")
+def botao_agendar(message):
     usuarios[message.chat.id] = {"etapa": "nome"}
     bot.send_message(message.chat.id, "Qual é seu nome?")
-
 @bot.message_handler(func=lambda message: True)
 def responder(message):
     chat_id = message.chat.id
@@ -72,6 +81,17 @@ def responder(message):
 
     else:
         bot.send_message(chat_id, "Digite /agendar para marcar horário.")
+@bot.message_handler(func=lambda message: message.text == "📋 Ver agendamentos")
+def ver_agendamentos(message):
+    try:
+        with open("agendamentos.txt", "r", encoding="utf-8") as arquivo:
+            dados = arquivo.read()
 
+            if dados.strip() == "":
+                bot.send_message(message.chat.id, "Nenhum agendamento ainda.")
+            else:
+                bot.send_message(message.chat.id, f"📅 Agendamentos:\n\n{dados}")
+    except:
+        bot.send_message(message.chat.id, "Nenhum agendamento encontrado.")
 print("Bot rodando...")
-bot.polling()
+bot.infinity_polling()
