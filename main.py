@@ -56,23 +56,20 @@ def responder(message):
                  "16:00\n\n"
                  "Ou digite outro se necessário:")
 
-                # Verificar se horário já existe
-                try:
-                    with 
-             open("agendamentos.txt", "r", 
-             encoding="utf-8") as arquivo:
-                         if horario in 
-             arquivo.read():
-           
-             bot.send_message(chat_id, "❌ Esse 
-             horário já foi reservado. Escolha 
-             outro.")
-                             return
-                 except:
-                     pass
+                # Verificar se horário já existe              
+    elif etapa == "horario":
+    horario = message.text
 
-                 usuarios[chat_id]["horario"] = 
-             horario
+    # Verificar se horário já existe
+    try:
+        with open("agendamentos.txt", "r", encoding="utf-8") as arquivo:
+            if horario in arquivo.read():
+                bot.send_message(chat_id, "❌ Esse horário já foi reservado. Escolha outro.")
+                return
+    except:
+        pass
+
+    usuarios[chat_id]["horario"] = horario
 
             # Salvar em arquivo
             with open("agendamentos.txt", "a", encoding="utf-8") as arquivo:
