@@ -47,15 +47,32 @@ def responder(message):
         elif etapa == "servico":
             usuarios[chat_id]["servico"] = message.text
             usuarios[chat_id]["etapa"] = "horario"
-            bot.send_message(chat_id, "Qual melhor dia e horário?")
+            bot.send_message(chat_id,
+                 "Escolha um horário disponível:\n"
+                 "10:00\n"
+                 "11:00\n"
+                 "14:00\n"
+                 "15:00\n"
+                 "16:00\n\n"
+                 "Ou digite outro se necessário:")
 
-        elif etapa == "horario":
-            usuarios[chat_id]["horario"] = message.text
+                # Verificar se horário já existe
+                try:
+                    with 
+             open("agendamentos.txt", "r", 
+             encoding="utf-8") as arquivo:
+                         if horario in 
+             arquivo.read():
+           
+             bot.send_message(chat_id, "❌ Esse 
+             horário já foi reservado. Escolha 
+             outro.")
+                             return
+                 except:
+                     pass
 
-            nome = usuarios[chat_id]["nome"]
-            telefone = usuarios[chat_id]["telefone"]
-            servico = usuarios[chat_id]["servico"]
-            horario = usuarios[chat_id]["horario"]
+                 usuarios[chat_id]["horario"] = 
+             horario
 
             # Salvar em arquivo
             with open("agendamentos.txt", "a", encoding="utf-8") as arquivo:
@@ -80,18 +97,37 @@ def responder(message):
             del usuarios[chat_id]
 
     else:
-        bot.send_message(chat_id, "Digite /agendar para marcar horário.")
-@bot.message_handler(func=lambda message: message.text == "📋 Ver agendamentos")
+        @bot.message_handler(func=lambda message: message.text == "📋 Ver agendamentos")
 def ver_agendamentos(message):
+    chat_id = message.chat.id
+
+    try:
+        with open("agendamentos.txt", "a", encoding="utf-8") as arquivo:
+    arquivo.write(
+        f"ID:{chat_id} | Nome:{nome} | Telefone:{telefone} | Serviço:{servico} | Horário:{horario}\n"
+        )
+
+        meus = [l for l in linhas if f"ID:{chat_id}" in l]
+
+        if meus:
+            bot.send_message(chat_id, "📅 Seus agendamentos:\n\n" + "".join(meus))
+        else:
+            bot.send_message(chat_id, "Você ainda não possui agendamentos.")
+    except:
+      bot.send_message(chat_id, "Nenhum agendamento encontrado.")
+
+@bot.message_handler(commands=['admin'])
+def painel_admin(message):
+    if message.chat.id != ADMIN_ID:
+        return
+
     try:
         with open("agendamentos.txt", "r", encoding="utf-8") as arquivo:
             dados = arquivo.read()
 
-            if dados.strip() == "":
-                bot.send_message(message.chat.id, "Nenhum agendamento ainda.")
-            else:
-                bot.send_message(message.chat.id, f"📅 Agendamentos:\n\n{dados}")
+        bot.send_message(ADMIN_ID, "📊 TODOS OS AGENDAMENTOS:\n\n" + dados)
     except:
-        bot.send_message(message.chat.id, "Nenhum agendamento encontrado.")
-print("Bot rodando...")
+        bot.send_message(ADMIN_ID, "Nenhum agendamento encontrado.")
+                 
+        print("Bot rodando...")
 bot.infinity_polling()
