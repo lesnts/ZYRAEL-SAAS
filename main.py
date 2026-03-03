@@ -72,7 +72,7 @@ def responder(message):
     usuarios[chat_id]["horario"] = horario
 
             # Salvar em arquivo
-            with open("agendamentos.txt", "a", encoding="utf-8") as arquivo:
+        with open("agendamentos.txt", "a", encoding="utf-8") as arquivo:
                 arquivo.write(
                     f"Nome: {nome} | Telefone: {telefone} | Serviço: {servico} | Horário: {horario}\n"
                 )
