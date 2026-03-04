@@ -145,5 +145,22 @@ def painel_admin(message):
     except FileNotFoundError:
         bot.send_message(ADMIN_ID, "Nenhum agendamento encontrado.")
         
-print("Bot rodando...")
-bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)
+from flask import Flask, request
+
+app = Flask(__name__)
+
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    json_str = request.get_data().decode("UTF-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "OK", 200
+
+@app.route("/")
+def index():
+    return "Bot está rodando!"
+
+if __name__ == "__main__":
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://SEU_DOMINIO_RAILWAY/{TOKEN}")
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
