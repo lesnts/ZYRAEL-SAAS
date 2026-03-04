@@ -25,6 +25,11 @@ def start(message):
         reply_markup=markup
     )
 
+
+@bot.message_handler(commands=['id'])
+def ver_id(message):
+    bot.send_message(message.chat.id, f"Seu ID é: {message.chat.id}")
+    
 # ================= VER AGENDAMENTOS (ANTES DO responder!) =================
 
 @bot.message_handler(func=lambda message: message.text == "📋 Ver agendamentos")
