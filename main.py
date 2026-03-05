@@ -1,4 +1,7 @@
 import os
+import threading
+import time
+from datetime import datetime, timedelta
 from flask import Flask, request
 import telebot
 from telebot import types
@@ -24,8 +27,6 @@ def menu_principal(chat_id):
     )
     bot.send_message(chat_id, "Escolha uma opção:", reply_markup=markup)
 
-# ================= START =================
-
 @bot.message_handler(commands=['start'])
 def start(message):
     menu_principal(message.chat.id)
@@ -46,62 +47,8 @@ def admin(message):
             bot.send_message(ADMIN_ID, "Nenhum agendamento.")
         else:
             bot.send_message(ADMIN_ID, "📊 TODOS OS AGENDAMENTOS:\n\n" + dados)
-
-    except FileNotFoundError:
-        bot.send_message(ADMIN_ID, "Nenhum agendamento.")
-
-# ================= VER AGENDAMENTOS =================
-
-@bot.message_handler(func=lambda m: m.text == "📋 Meus agendamentos")
-def ver_agendamentos(message):
-    chat_id = message.chat.id
-
-    try:
-        with open("agendamentos.txt", "r", encoding="utf-8") as arquivo:
-            linhas = [l for l in arquivo.readlines() if f"ID:{chat_id}" in l]
-
-        if linhas:
-            texto = "📅 Seus agendamentos:\n"
-            for l in linhas:
-                partes = l.strip().split("|")
-                servico = partes[3].split(":")[1].strip()
-                horario = partes[4].split(":")[1].strip()
-                texto += f"• {servico} às {horario}\n"
-            bot.send_message(chat_id, texto)
-        else:
-            bot.send_message(chat_id, "Você não possui agendamentos.")
-
-    except FileNotFoundError:
-        bot.send_message(chat_id, "Nenhum agendamento encontrado.")
-
-# ================= CANCELAR =================
-
-@bot.message_handler(func=lambda m: m.text == "❌ Cancelar")
-def cancelar(message):
-    chat_id = message.chat.id
-    agendados = []
-
-    try:
-        with open("agendamentos.txt", "r", encoding="utf-8") as arquivo:
-            agendados = [l for l in arquivo.readlines() if f"ID:{chat_id}" in l]
     except:
-        pass
-
-    if not agendados:
-        bot.send_message(chat_id, "Você não possui agendamentos para cancelar.")
-        return
-
-    markup = types.InlineKeyboardMarkup()
-
-    for l in agendados:
-        partes = l.strip().split("|")
-        horario = partes[4].split(":")[1].strip()
-        markup.add(types.InlineKeyboardButton(
-            f"Cancelar {horario}",
-            callback_data=f"cancelar|{horario}"
-        ))
-
-    bot.send_message(chat_id, "Escolha o horário para cancelar:", reply_markup=markup)
+        bot.send_message(ADMIN_ID, "Nenhum agendamento.")
 
 # ================= AGENDAR =================
 
@@ -132,90 +79,121 @@ def fluxo(message):
 
     elif etapa == "servico":
         usuarios[chat_id]["servico"] = message.text
-        usuarios[chat_id]["etapa"] = "horario"
+        usuarios[chat_id]["etapa"] = "data"
+        bot.send_message(chat_id, "Digite a data (DD/MM/AAAA):")
 
-        markup = types.InlineKeyboardMarkup()
-
+    elif etapa == "data":
         try:
-            with open("agendamentos.txt", "r", encoding="utf-8") as f:
-                horarios_ocupados = [
-                    l.split("|")[4].split(":")[1].strip()
-                    for l in f.readlines()
-                ]
+            data_escolhida = datetime.strptime(message.text, "%d/%m/%Y")
+            hoje = datetime.now()
+            limite = hoje + timedelta(days=30)
+
+            if data_escolhida.date() < hoje.date():
+                bot.send_message(chat_id, "❌ Não pode agendar para data passada.")
+                return
+
+            if data_escolhida > limite:
+                bot.send_message(chat_id, "❌ Só é possível agendar até 30 dias à frente.")
+                return
+
+            usuarios[chat_id]["data"] = message.text
+            usuarios[chat_id]["etapa"] = "horario"
+
+            markup = types.InlineKeyboardMarkup()
+
+            try:
+                with open("agendamentos.txt", "r", encoding="utf-8") as f:
+                    linhas = f.readlines()
+                    horarios_ocupados = [
+                        l.split("|")[5].split(":")[1].strip()
+                        for l in linhas
+                        if f"Data:{message.text}" in l
+                    ]
+            except:
+                horarios_ocupados = []
+
+            for h in HORARIOS_DISPONIVEIS:
+                if h in horarios_ocupados:
+                    markup.add(types.InlineKeyboardButton(f"{h} ❌", callback_data="ocupado"))
+                else:
+                    markup.add(types.InlineKeyboardButton(f"{h} ✅", callback_data=h))
+
+            bot.send_message(chat_id, "Escolha o horário:", reply_markup=markup)
+
         except:
-            horarios_ocupados = []
-
-        for h in HORARIOS_DISPONIVEIS:
-            if h in horarios_ocupados:
-                markup.add(types.InlineKeyboardButton(f"{h} ❌", callback_data="ocupado"))
-            else:
-                markup.add(types.InlineKeyboardButton(f"{h} ✅", callback_data=h))
-
-        bot.send_message(chat_id, "Escolha o horário:", reply_markup=markup)
+            bot.send_message(chat_id, "Formato inválido. Use DD/MM/AAAA.")
 
 # ================= CALLBACK =================
 
 @bot.callback_query_handler(func=lambda c: True)
 def callback(call):
     chat_id = call.message.chat.id
-    data = call.data
+    data_callback = call.data
 
-    # CANCELAMENTO
-    if data.startswith("cancelar|"):
-        horario = data.split("|")[1]
-
-        try:
-            with open("agendamentos.txt", "r", encoding="utf-8") as f:
-                linhas = f.readlines()
-
-            novas_linhas = [
-                l for l in linhas
-                if not (f"ID:{chat_id}" in l and f"Horário:{horario}" in l)
-            ]
-
-            with open("agendamentos.txt", "w", encoding="utf-8") as f:
-                f.writelines(novas_linhas)
-
-            bot.send_message(chat_id, f"❌ Horário {horario} cancelado!")
-
-        except:
-            bot.send_message(chat_id, "Erro ao cancelar horário.")
-        return
-
-    if data == "ocupado":
+    if data_callback == "ocupado":
         bot.answer_callback_query(call.id, "Esse horário já está ocupado.")
-        return
-
-    # VERIFICAÇÃO FINAL ANTI-DUPLICAÇÃO
-    try:
-        with open("agendamentos.txt", "r", encoding="utf-8") as f:
-            horarios_ocupados = [
-                l.split("|")[4].split(":")[1].strip()
-                for l in f.readlines()
-            ]
-    except:
-        horarios_ocupados = []
-
-    if data in horarios_ocupados:
-        bot.answer_callback_query(call.id, "Esse horário acabou de ser ocupado.")
-        bot.send_message(chat_id, "Escolha outro horário.")
         return
 
     nome = usuarios[chat_id]["nome"]
     telefone = usuarios[chat_id]["telefone"]
     servico = usuarios[chat_id]["servico"]
-    horario = data
+    data_agendada = usuarios[chat_id]["data"]
+    horario = data_callback
+
+    try:
+        with open("agendamentos.txt", "r", encoding="utf-8") as f:
+            linhas = f.readlines()
+            for l in linhas:
+                if f"Data:{data_agendada}" in l and f"Horário:{horario}" in l:
+                    bot.answer_callback_query(call.id, "Horário acabou de ser ocupado.")
+                    return
+    except:
+        pass
 
     with open("agendamentos.txt", "a", encoding="utf-8") as f:
-        f.write(f"ID:{chat_id} | Nome:{nome} | Telefone:{telefone} | Serviço:{servico} | Horário:{horario}\n")
+        f.write(f"ID:{chat_id} | Nome:{nome} | Telefone:{telefone} | Serviço:{servico} | Data:{data_agendada} | Horário:{horario}\n")
 
-    bot.send_message(chat_id, f"✅ Horário {horario} confirmado!")
-    bot.send_message(ADMIN_ID, f"📢 Novo agendamento!\n{nome} | {telefone} | {servico} | {horario}")
+    bot.send_message(chat_id, f"✅ Agendado para {data_agendada} às {horario}")
+    bot.send_message(ADMIN_ID, f"📢 Novo agendamento!\n{nome} | {servico} | {data_agendada} | {horario}")
 
     del usuarios[chat_id]
     menu_principal(chat_id)
 
-# ================= WEBHOOK CORRETO =================
+# ================= RELATÓRIO AUTOMÁTICO =================
+
+def relatorio_diario():
+    while True:
+        agora = datetime.now()
+        if agora.hour == 20 and agora.minute == 30:
+            hoje = agora.strftime("%d/%m/%Y")
+            relatorio = []
+            try:
+                with open("agendamentos.txt", "r", encoding="utf-8") as f:
+                    for l in f.readlines():
+                        if f"Data:{hoje}" in l:
+                            relatorio.append(l.strip())
+            except:
+                pass
+
+            if relatorio:
+                texto = f"📊 Relatório do Dia – {hoje}\n\nTotal: {len(relatorio)}\n\n"
+                for r in relatorio:
+                    partes = r.split("|")
+                    nome = partes[1].split(":")[1].strip()
+                    servico = partes[3].split(":")[1].strip()
+                    horario = partes[5].split(":")[1].strip()
+                    texto += f"• {nome} – {horario} – {servico}\n"
+                bot.send_message(ADMIN_ID, texto)
+            else:
+                bot.send_message(ADMIN_ID, f"📊 Relatório do Dia – {hoje}\n\nNenhum agendamento hoje.")
+
+            time.sleep(60)
+
+        time.sleep(30)
+
+threading.Thread(target=relatorio_diario).start()
+
+# ================= WEBHOOK =================
 
 @app.route('/', methods=['POST'])
 def webhook():
@@ -229,8 +207,6 @@ def webhook():
 @app.route('/', methods=['GET'])
 def check():
     return "Bot ativo", 200
-
-# ================= START SERVER =================
 
 if __name__ == "__main__":
     bot.remove_webhook()
