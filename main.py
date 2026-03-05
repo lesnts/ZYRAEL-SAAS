@@ -30,12 +30,6 @@ def menu_principal(chat_id):
 def start(message):
     menu_principal(message.chat.id)
 
-# ================= ID (REMOVER DEPOIS SE QUISER) =================
-
-@bot.message_handler(commands=['id'])
-def pegar_id(message):
-    bot.send_message(message.chat.id, f"Seu ID é: {message.chat.id}")
-
 # ================= ADMIN =================
 
 @bot.message_handler(commands=['admin'])
