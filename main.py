@@ -154,21 +154,21 @@ def callback(call):
         bot.answer_callback_query(call.id, "Já ocupado.")
         return
 
-    u = usuarios[chat_id]
+cliente = get_cliente(chat_id)
 
-    if horario_ocupado(u["data"], data_callback):
-        bot.answer_callback_query(call.id, "Acabou de ser ocupado.")
-        return
+ok = salvar_agendamento(
+    cliente["id"],
+    u["nome"],
+    u["telefone"],
+    u["servico"],
+    u["valor"],
+    u["data"],
+    data_callback
+)
 
-    salvar_agendamento(
-        chat_id,
-        u["nome"],
-        u["telefone"],
-        u["servico"],
-        u["valor"],
-        u["data"],
-        data_callback
-    )
+if not ok:
+    bot.send_message(chat_id, "❌ Horário já foi ocupado.")
+    return
 
     bot.send_message(chat_id, f"✅ Agendado {u['data']} às {data_callback}")
 
