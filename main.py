@@ -40,6 +40,7 @@ def menu_principal(chat_id):
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    get_cliente(message.chat.id)
     menu_principal(message.chat.id)
 
 def get_cliente(chat_id):
