@@ -9,13 +9,12 @@ from telebot import types
 from bot.database import *
 
 TOKEN = os.getenv("TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-criar_tabela()
+criar_tabelas()
 
 usuarios = {}
 
@@ -26,6 +25,15 @@ SERVICOS = {
     "Escova": 40,
     "Progressiva": 120
 }
+
+# ================= CLIENTE =================
+
+def get_cliente(chat_id):
+    cliente = buscar_cliente(chat_id)
+    if not cliente:
+        criar_cliente(chat_id)
+        cliente = buscar_cliente(chat_id)
+    return cliente
 
 # ================= MENU =================
 
@@ -43,32 +51,24 @@ def start(message):
     get_cliente(message.chat.id)
     menu_principal(message.chat.id)
 
-def get_cliente(chat_id):
-    cliente = buscar_cliente(chat_id)
-    if not cliente:
-        criar_cliente(chat_id)
-        cliente = buscar_cliente(chat_id)
-    return cliente
-    
-# ================= ADMIN =================
+# ================= ADMIN (AGORA É DO PRÓPRIO CLIENTE) =================
 
 @bot.message_handler(commands=['admin'])
 def admin(message):
-    if message.chat.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "⛔ Sem permissão")
-        return
+    chat_id = message.chat.id
+    cliente = get_cliente(chat_id)
 
-    dados = listar_agendamentos()
+    dados = listar_agendamentos(cliente["id"])
 
     if not dados:
-        bot.send_message(ADMIN_ID, "Nenhum agendamento.")
+        bot.send_message(chat_id, "Nenhum agendamento.")
         return
 
-    texto = "📊 TODOS OS AGENDAMENTOS:\n\n"
+    texto = "📊 SEUS AGENDAMENTOS:\n\n"
     for nome, servico, valor, data, hora in dados:
         texto += f"{data} {hora} - {nome} ({servico}) R${valor}\n"
 
-    bot.send_message(ADMIN_ID, texto)
+    bot.send_message(chat_id, texto)
 
 # ================= AGENDAR =================
 
@@ -130,17 +130,19 @@ def fluxo(message):
             usuarios[chat_id]["data"] = message.text
             usuarios[chat_id]["etapa"] = "horario"
 
+            cliente = get_cliente(chat_id)
+
             markup = types.InlineKeyboardMarkup()
 
             for h in HORARIOS_DISPONIVEIS:
-                if horario_ocupado(message.text, h):
+                if horario_ocupado(cliente["id"], message.text, h):
                     markup.add(types.InlineKeyboardButton(f"{h} ❌", callback_data="ocupado"))
                 else:
                     markup.add(types.InlineKeyboardButton(f"{h} ✅", callback_data=h))
 
             bot.send_message(chat_id, "Escolha o horário:", reply_markup=markup)
 
-        except:
+        except Exception:
             bot.send_message(chat_id, "Formato inválido.")
 
 # ================= CALLBACK =================
@@ -150,26 +152,21 @@ def callback(call):
     chat_id = call.message.chat.id
     data_callback = call.data
 
-    # 🚫 botão de horário ocupado
     if data_callback == "ocupado":
         bot.answer_callback_query(call.id, "Já ocupado.")
         return
 
-    # 👤 cliente (multi-tenant)
     cliente = get_cliente(chat_id)
 
-    # 🧠 estado do usuário
     u = usuarios.get(chat_id)
     if not u:
-        bot.answer_callback_query(call.id, "Sessão expirada. Tente novamente.")
+        bot.answer_callback_query(call.id, "Sessão expirada.")
         return
 
-    # 🔒 checagem extra (evita concorrência)
     if horario_ocupado(cliente["id"], u["data"], data_callback):
         bot.answer_callback_query(call.id, "Acabou de ser ocupado.")
         return
 
-    # 💾 salvar agendamento com proteção
     ok = salvar_agendamento(
         cliente["id"],
         u["nome"],
@@ -184,22 +181,17 @@ def callback(call):
         bot.send_message(chat_id, "❌ Horário já foi ocupado.")
         return
 
-    # ✅ confirmação pro usuário
     bot.send_message(
         chat_id,
         f"✅ Agendado!\n📅 {u['data']} às {data_callback}\n💇 {u['servico']}"
     )
 
-    # 📢 aviso pro cliente (dono do salão)
     bot.send_message(
         chat_id,
         f"📢 Novo agendamento:\n👤 {u['nome']}\n📞 {u['telefone']}\n💇 {u['servico']}\n💰 R${u['valor']}\n📅 {u['data']} {data_callback}"
     )
 
-    # 🧹 limpa sessão
     del usuarios[chat_id]
-
-    # 🔙 volta pro menu
     menu_principal(chat_id)
 
 # ================= RELATÓRIO =================
@@ -211,18 +203,22 @@ def relatorio_diario():
         if agora.hour == 20 and agora.minute == 30:
             hoje = agora.strftime("%d/%m/%Y")
 
-            total = faturamento_por_dia(hoje)
+            # ⚠️ versão simples (MVP)
+            for chat_id in usuarios.keys():
+                cliente = get_cliente(chat_id)
 
-            bot.send_message(
-                ADMIN_ID,
-                f"📊 Relatório {hoje}\n💰 Faturamento: R${total}"
-            )
+                total = faturamento_por_dia(cliente["id"], hoje)
+
+                bot.send_message(
+                    chat_id,
+                    f"📊 Relatório {hoje}\n💰 R${total}"
+                )
 
             time.sleep(60)
 
         time.sleep(30)
 
-threading.Thread(target=relatorio_diario).start()
+threading.Thread(target=relatorio_diario, daemon=True).start()
 
 # ================= WEBHOOK =================
 
