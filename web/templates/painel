@@ -1,1 +1,7 @@
-dashboard.html
+<h1>Painel - {{cliente.nome}}</h1>
+
+<h2>Agendamentos:</h2>
+
+{% for a in agendamentos %}
+  <p>{{a[3]}} {{a[4]}} - {{a[0]}} ({{a[1]}}) R${{a[2]}}</p>
+{% endfor %}
