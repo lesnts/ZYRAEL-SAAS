@@ -166,10 +166,11 @@ ok = salvar_agendamento(
     data_callback
 )
 
-if not ok:
-    bot.send_message(chat_id, "❌ Horário já foi ocupado.")
-return
-    bot.send_message(chat_id, f"✅ Agendado {u['data']} às {data_callback}")
+    if not ok:
+        bot.send_message(chat_id, "❌ Horário já foi ocupado.")
+        return
+
+bot.send_message(chat_id, f"✅ Agendado {u['data']} às {data_callback}")
 
     bot.send_message(
         ADMIN_ID,
