@@ -1,5 +1,4 @@
 dashboard.html
-
 <h1>Painel - {{cliente.nome}}</h1>
 
 <h2>Agendamentos:</h2>
