@@ -1,5 +1,5 @@
 from flask import Flask, render_template
-from bot.database import listar_agendamentos, buscar_cliente
+from bot.database import buscar_cliente, listar_agendamentos
 
 app = Flask(__name__)
 
