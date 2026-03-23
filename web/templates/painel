@@ -1,7 +1,49 @@
-dashboard.html
-<h1>Painel - {{cliente.nome}}</h1>
-<h2>Agendamentos:</h2>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Painel</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
 
-{% for a in agendamentos %}
-  <p>{{a[3]}} {{a[4]}} - {{a[0]}} ({{a[1]}}) R${{a[2]}}</p>
-{% endfor %}
+<div class="container">
+
+    <h1>💼 Painel - {{cliente.nome}}</h1>
+
+    <div class="cards">
+        <div class="card">
+            <h2>Total de Agendamentos</h2>
+            <p>{{agendamentos|length}}</p>
+        </div>
+    </div>
+
+    <h2>📅 Agenda</h2>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Hora</th>
+                <th>Nome</th>
+                <th>Serviço</th>
+                <th>Valor</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in agendamentos %}
+            <tr>
+                <td>{{a[3]}}</td>
+                <td>{{a[4]}}</td>
+                <td>{{a[0]}}</td>
+                <td>{{a[1]}}</td>
+                <td>R${{a[2]}}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+
+</body>
+</html>
