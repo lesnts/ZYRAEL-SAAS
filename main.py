@@ -51,6 +51,20 @@ def start(message):
     get_cliente(message.chat.id)
     menu_principal(message.chat.id)
 
+# ================= DATAS (COM DIA DA SEMANA) =================
+
+def gerar_botoes_datas():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+
+    hoje = datetime.now()
+
+    for i in range(7):
+        dia = hoje + timedelta(days=i)
+        texto = dia.strftime("%d/%m/%Y (%a)")
+        markup.add(types.KeyboardButton(texto))
+
+    return markup
+
 # ================= MEUS AGENDAMENTOS =================
 
 @bot.message_handler(func=lambda m: m.text == "📋 Meus agendamentos")
@@ -126,11 +140,15 @@ def fluxo(message):
         usuarios[chat_id]["valor"] = SERVICOS[servico_nome]
         usuarios[chat_id]["etapa"] = "data"
 
-        bot.send_message(chat_id, "Digite a data (DD/MM/AAAA):")
+        markup = gerar_botoes_datas()
+        bot.send_message(chat_id, "Escolha a data:", reply_markup=markup)
 
     elif etapa == "data":
         try:
-            data_escolhida = datetime.strptime(message.text, "%d/%m/%Y")
+            # pega só a data (remove o dia da semana)
+            data_texto = message.text.split(" ")[0]
+
+            data_escolhida = datetime.strptime(data_texto, "%d/%m/%Y")
             hoje = datetime.now()
             limite = hoje + timedelta(days=30)
 
@@ -142,7 +160,7 @@ def fluxo(message):
                 bot.send_message(chat_id, "❌ Máximo 30 dias.")
                 return
 
-            usuarios[chat_id]["data"] = message.text
+            usuarios[chat_id]["data"] = data_texto
             usuarios[chat_id]["etapa"] = "horario"
 
             cliente = get_cliente(chat_id)
@@ -150,7 +168,7 @@ def fluxo(message):
             markup = types.InlineKeyboardMarkup()
 
             for h in HORARIOS_DISPONIVEIS:
-                if horario_ocupado(cliente["id"], message.text, h):
+                if horario_ocupado(cliente["id"], data_texto, h):
                     markup.add(types.InlineKeyboardButton(f"{h} ❌", callback_data="ocupado"))
                 else:
                     markup.add(types.InlineKeyboardButton(f"{h} ✅", callback_data=h))
