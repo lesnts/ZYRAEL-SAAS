@@ -235,6 +235,22 @@ def webhook():
 @app.route('/', methods=['GET'])
 def check():
     return "Bot ativo", 200
+from flask import render_template
+
+@app.route("/dashboard/<int:telegram_id>")
+def dashboard(telegram_id):
+    cliente = buscar_cliente(telegram_id)
+
+    if not cliente:
+        return "Cliente não encontrado"
+
+    agendamentos = listar_agendamentos(cliente["id"])
+
+    return render_template(
+        "dashboard.html",
+        cliente=cliente,
+        agendamentos=agendamentos
+    )
 
 if __name__ == "__main__":
     bot.remove_webhook()
