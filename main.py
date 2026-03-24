@@ -236,10 +236,7 @@ def webhook():
 def check():
     return "Bot ativo", 200
 
-if __name__ == "__main__":
-    bot.remove_webhook()
-    bot.set_webhook(url=WEBHOOK_URL)
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+from flask import render_template
 
 @app.route("/dashboard/<int:telegram_id>")
 def dashboard(telegram_id):
@@ -255,3 +252,8 @@ def dashboard(telegram_id):
         cliente=cliente,
         agendamentos=agendamentos
     )
+
+if __name__ == "__main__":
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
