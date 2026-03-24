@@ -51,16 +51,25 @@ def start(message):
     get_cliente(message.chat.id)
     menu_principal(message.chat.id)
 
-# ================= DATAS (COM DIA DA SEMANA) =================
+# ================= DATAS PREMIUM =================
 
 def gerar_botoes_datas():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
 
     hoje = datetime.now()
 
+    dias_semana = [
+        "Segunda", "Terça", "Quarta",
+        "Quinta", "Sexta", "Sábado", "Domingo"
+    ]
+
     for i in range(7):
         dia = hoje + timedelta(days=i)
-        texto = dia.strftime("%d/%m/%Y (%a)")
+
+        nome_dia = dias_semana[dia.weekday()]
+        data_formatada = dia.strftime("%d/%m")
+
+        texto = f"{nome_dia} • {data_formatada}"
         markup.add(types.KeyboardButton(texto))
 
     return markup
@@ -145,8 +154,8 @@ def fluxo(message):
 
     elif etapa == "data":
         try:
-            # pega só a data (remove o dia da semana)
-            data_texto = message.text.split(" ")[0]
+            # extrai data do botão
+            data_texto = message.text.split(" • ")[1] + f"/{datetime.now().year}"
 
             data_escolhida = datetime.strptime(data_texto, "%d/%m/%Y")
             hoje = datetime.now()
@@ -178,7 +187,7 @@ def fluxo(message):
         except Exception:
             bot.send_message(chat_id, "Formato inválido.")
 
-# ================= CALLBACK =================
+# ================= CALLBACK COM CONFIRMAÇÃO =================
 
 @bot.callback_query_handler(func=lambda c: True)
 def callback(call):
@@ -189,15 +198,40 @@ def callback(call):
         bot.answer_callback_query(call.id, "Já ocupado.")
         return
 
-    cliente = get_cliente(chat_id)
-
     u = usuarios.get(chat_id)
     if not u:
-        bot.answer_callback_query(call.id, "Sessão expirada. Faça /start novamente.")
+        bot.answer_callback_query(call.id, "Sessão expirada.")
         return
+
+    cliente = get_cliente(chat_id)
 
     if horario_ocupado(cliente["id"], u["data"], data_callback):
         bot.answer_callback_query(call.id, "Acabou de ser ocupado.")
+        return
+
+    # confirmação antes de salvar
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("✅ Confirmar", callback_data=f"confirmar|{data_callback}"),
+        types.InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")
+    )
+
+    bot.send_message(
+        chat_id,
+        f"Confirmar agendamento?\n📅 {u['data']} às {data_callback}\n💇 {u['servico']}",
+        reply_markup=markup
+    )
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("confirmar"))
+def confirmar(call):
+    chat_id = call.message.chat.id
+    horario = call.data.split("|")[1]
+
+    cliente = get_cliente(chat_id)
+    u = usuarios.get(chat_id)
+
+    if not u:
+        bot.answer_callback_query(call.id, "Sessão expirada.")
         return
 
     ok = salvar_agendamento(
@@ -207,25 +241,22 @@ def callback(call):
         u["servico"],
         u["valor"],
         u["data"],
-        data_callback
+        horario
     )
 
     if not ok:
-        bot.send_message(chat_id, "❌ Horário já foi ocupado.")
+        bot.send_message(chat_id, "❌ Horário já ocupado.")
         return
 
-    bot.send_message(
-        chat_id,
-        f"✅ Agendado!\n📅 {u['data']} às {data_callback}\n💇 {u['servico']}"
-    )
-
-    bot.send_message(
-        chat_id,
-        f"📢 Novo agendamento:\n👤 {u['nome']}\n📞 {u['telefone']}\n💇 {u['servico']}\n💰 R${u['valor']}\n📅 {u['data']} {data_callback}"
-    )
+    bot.send_message(chat_id, "✅ Agendamento confirmado!")
 
     del usuarios[chat_id]
     menu_principal(chat_id)
+
+@bot.callback_query_handler(func=lambda c: c.data == "cancelar")
+def cancelar_callback(call):
+    bot.send_message(call.message.chat.id, "Agendamento cancelado.")
+    menu_principal(call.message.chat.id)
 
 # ================= DASHBOARD =================
 
@@ -238,11 +269,7 @@ def dashboard(telegram_id):
 
     agendamentos = listar_agendamentos(cliente["id"])
 
-    return render_template(
-        "dashboard.html",
-        cliente=cliente,
-        agendamentos=agendamentos
-    )
+    return render_template("dashboard.html", cliente=cliente, agendamentos=agendamentos)
 
 # ================= WEBHOOK =================
 
