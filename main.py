@@ -223,7 +223,7 @@ threading.Thread(target=relatorio_diario, daemon=True).start()
 
 # ================= WEBHOOK =================
 
-@app.route('/', methods=['POST'])
+@app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
         json_string = request.stream.read().decode('utf-8')
