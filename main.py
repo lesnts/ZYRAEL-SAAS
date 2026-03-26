@@ -1,6 +1,4 @@
 import os
-import threading
-import time
 from datetime import datetime, timedelta
 from flask import Flask, request, render_template
 import telebot
@@ -107,7 +105,6 @@ def fluxo(message):
         usuarios[chat_id]["etapa"] = "servico"
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-
         for s, v in SERVICOS.items():
             markup.add(types.KeyboardButton(f"{s} - R${v}"))
 
@@ -127,7 +124,6 @@ def fluxo(message):
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
         hoje = datetime.now()
-
         for i in range(7):
             dia = hoje + timedelta(days=i)
             nome_dia = DIAS_SEMANA[dia.weekday()]
@@ -145,7 +141,6 @@ def fluxo(message):
             cliente = get_cliente(chat_id)
 
             markup = types.InlineKeyboardMarkup()
-
             for h in HORARIOS_DISPONIVEIS:
                 if horario_ocupado(cliente["id"], data_formatada, h):
                     markup.add(types.InlineKeyboardButton(f"{h} ❌", callback_data="ocupado"))
@@ -157,22 +152,22 @@ def fluxo(message):
         except:
             bot.send_message(chat_id, "Formato inválido.")
 
-# ================= CALLBACK HORÁRIO =================
+# ================= HORÁRIO =================
 
 @bot.callback_query_handler(func=lambda c: ":" in c.data)
 def selecionar_horario(call):
     chat_id = call.message.chat.id
-    horario = call.data
 
-    if horario == "ocupado":
-        bot.answer_callback_query(call.id, "Já ocupado.")
+    bot.answer_callback_query(call.id)
+
+    if call.data == "ocupado":
         return
 
     u = usuarios.get(chat_id)
     if not u:
         return
 
-    u["horario"] = horario
+    u["horario"] = call.data
 
     markup = types.InlineKeyboardMarkup()
     markup.add(
@@ -182,24 +177,26 @@ def selecionar_horario(call):
 
     bot.send_message(
         chat_id,
-        f"Confirmar agendamento?\n📅 {u['data']} às {horario}\n💇 {u['servico']}",
+        f"Confirmar agendamento?\n📅 {u['data']} às {u['horario']}\n💇 {u['servico']}",
         reply_markup=markup
     )
 
-# ================= CALLBACK CONFIRMAR =================
+# ================= CONFIRMAR =================
 
 @bot.callback_query_handler(func=lambda c: c.data == "confirmar")
 def confirmar(call):
     chat_id = call.message.chat.id
 
-    cliente = get_cliente(chat_id)
-    u = usuarios.get(chat_id)
+    bot.answer_callback_query(call.id)
 
+    u = usuarios.get(chat_id)
     if not u:
         return
 
+    cliente = get_cliente(chat_id)
+
     if horario_ocupado(cliente["id"], u["data"], u["horario"]):
-        bot.answer_callback_query(call.id, "Horário já ocupado.")
+        bot.send_message(chat_id, "❌ Horário já ocupado.")
         return
 
     salvar_agendamento(
@@ -212,6 +209,9 @@ def confirmar(call):
         u["horario"]
     )
 
+    # 🔥 remove botão (evita duplicação)
+    bot.delete_message(chat_id, call.message.message_id)
+
     bot.send_message(
         chat_id,
         f"✅ Agendado!\n📅 {u['data']} às {u['horario']}\n💇 {u['servico']}"
@@ -220,14 +220,18 @@ def confirmar(call):
     del usuarios[chat_id]
     menu_principal(chat_id)
 
-# ================= CALLBACK CANCELAR =================
+# ================= CANCELAR =================
 
 @bot.callback_query_handler(func=lambda c: c.data == "cancelar")
 def cancelar(call):
     chat_id = call.message.chat.id
 
+    bot.answer_callback_query(call.id)
+
     if chat_id in usuarios:
         del usuarios[chat_id]
+
+    bot.delete_message(chat_id, call.message.message_id)
 
     bot.send_message(chat_id, "❌ Agendamento cancelado.")
     menu_principal(chat_id)
