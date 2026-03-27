@@ -281,6 +281,8 @@ def webhook():
 
         updates_processados.add(update.update_id)
 
+        print("WEBHOOK RECEBIDO", update.update_id)
+
         bot.process_new_updates([update])
         return '', 200
 
