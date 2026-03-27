@@ -10,19 +10,15 @@ from bot.database import *
 TOKEN = os.getenv("TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-if not TOKEN:
-    raise Exception("TOKEN não definida!")
-
-bot = telebot.TeleBot(TOKEN, threaded=False)
+bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 criar_tabelas()
 
 usuarios = {}
 
-# 🔒 CONTROLE ANTI DUPLICAÇÃO
-updates_processados = set()
-callbacks_processados = set()
+# 🔥 ANTI-DUPLICAÇÃO GLOBAL
+processed_updates = set()
 
 HORARIOS_DISPONIVEIS = ["10:00", "11:00", "14:00", "15:00", "16:00"]
 
@@ -67,24 +63,22 @@ def start(message):
     get_cliente(message.chat.id)
     menu_principal(message.chat.id)
 
-# ================= AGENDAMENTOS =================
+# ================= MEUS AGENDAMENTOS =================
 
 @bot.message_handler(func=lambda m: m.text == "📋 Meus agendamentos")
 def meus_agendamentos(message):
-    chat_id = message.chat.id
-    cliente = get_cliente(chat_id)
-
+    cliente = get_cliente(message.chat.id)
     dados = listar_agendamentos(cliente["id"])
 
     if not dados:
-        bot.send_message(chat_id, "Você não possui agendamentos.")
+        bot.send_message(message.chat.id, "Você não possui agendamentos.")
         return
 
     texto = "📋 Seus agendamentos:\n\n"
     for nome, servico, valor, data, hora in dados:
         texto += f"{data} às {hora} - {servico} (R${valor})\n"
 
-    bot.send_message(chat_id, texto)
+    bot.send_message(message.chat.id, texto)
 
 # ================= AGENDAR =================
 
@@ -101,14 +95,15 @@ def fluxo(message):
         return
 
     u = usuarios[chat_id]
-    etapa = u["etapa"]
 
-    if etapa == "nome":
+    # NOME
+    if u["etapa"] == "nome":
         u["nome"] = message.text
         u["etapa"] = "telefone"
         bot.send_message(chat_id, "Digite seu telefone:")
 
-    elif etapa == "telefone":
+    # TELEFONE
+    elif u["etapa"] == "telefone":
         u["telefone"] = message.text
         u["etapa"] = "servico"
 
@@ -118,7 +113,8 @@ def fluxo(message):
 
         bot.send_message(chat_id, "Escolha o serviço:", reply_markup=markup)
 
-    elif etapa == "servico":
+    # SERVIÇO
+    elif u["etapa"] == "servico":
         nome = message.text.split(" - ")[0]
 
         if nome not in SERVICOS:
@@ -138,7 +134,8 @@ def fluxo(message):
 
         bot.send_message(chat_id, "Escolha a data:", reply_markup=markup)
 
-    elif etapa == "data":
+    # DATA
+    elif u["etapa"] == "data":
         try:
             data = message.text.split(" • ")[1] + f"/{datetime.now().year}"
             u["data"] = data
@@ -147,6 +144,7 @@ def fluxo(message):
             cliente = get_cliente(chat_id)
 
             markup = types.InlineKeyboardMarkup()
+
             for h in HORARIOS_DISPONIVEIS:
                 if horario_ocupado(cliente["id"], data, h):
                     markup.add(types.InlineKeyboardButton(f"{h} ❌", callback_data="ocupado"))
@@ -162,11 +160,6 @@ def fluxo(message):
 
 @bot.callback_query_handler(func=lambda c: ":" in c.data)
 def selecionar_horario(call):
-
-    if call.id in callbacks_processados:
-        return
-    callbacks_processados.add(call.id)
-
     bot.answer_callback_query(call.id)
 
     if call.data == "ocupado":
@@ -179,7 +172,6 @@ def selecionar_horario(call):
         return
 
     u["horario"] = call.data
-    u["confirmado"] = False
 
     markup = types.InlineKeyboardMarkup()
     markup.add(
@@ -198,27 +190,20 @@ def selecionar_horario(call):
 
 @bot.callback_query_handler(func=lambda c: c.data == "confirmar")
 def confirmar(call):
-
-    if call.id in callbacks_processados:
-        return
-    callbacks_processados.add(call.id)
-
     bot.answer_callback_query(call.id)
 
     chat_id = call.message.chat.id
     u = usuarios.get(chat_id)
 
-    if not u or u.get("confirmado"):
+    if not u:
         return
-
-    u["confirmado"] = True
 
     cliente = get_cliente(chat_id)
 
-    # 🔒 DUPLICAÇÃO FINAL BLOQUEADA NO BANCO
+    # 🔥 VERIFICAÇÃO DUPLA NO BANCO
     if horario_ocupado(cliente["id"], u["data"], u["horario"]):
         bot.edit_message_text(
-            "❌ Esse horário já foi confirmado.",
+            "❌ Horário já foi reservado.",
             chat_id=chat_id,
             message_id=call.message.message_id
         )
@@ -247,11 +232,6 @@ def confirmar(call):
 
 @bot.callback_query_handler(func=lambda c: c.data == "cancelar")
 def cancelar(call):
-
-    if call.id in callbacks_processados:
-        return
-    callbacks_processados.add(call.id)
-
     bot.answer_callback_query(call.id)
 
     chat_id = call.message.chat.id
@@ -275,13 +255,14 @@ def webhook():
         json_string = request.stream.read().decode('utf-8')
         update = telebot.types.Update.de_json(json_string)
 
-        # 🔒 ANTI DUPLICAÇÃO GLOBAL
-        if update.update_id in updates_processados:
+        # 🔥 BLOQUEIA DUPLICAÇÃO
+        if update.update_id in processed_updates:
             return '', 200
 
-        updates_processados.add(update.update_id)
+        processed_updates.add(update.update_id)
 
-        print("WEBHOOK RECEBIDO", update.update_id)
+        if len(processed_updates) > 1000:
+            processed_updates.clear()
 
         bot.process_new_updates([update])
         return '', 200
@@ -291,23 +272,6 @@ def webhook():
 @app.route('/', methods=['GET'])
 def check():
     return "Bot ativo", 200
-
-# ================= DASHBOARD =================
-
-@app.route("/dashboard/<int:telegram_id>")
-def dashboard(telegram_id):
-    cliente = buscar_cliente(telegram_id)
-
-    if not cliente:
-        return "Cliente não encontrado"
-
-    agendamentos = listar_agendamentos(cliente["id"])
-
-    return render_template(
-        "dashboard.html",
-        cliente=cliente,
-        agendamentos=agendamentos
-    )
 
 # ================= START =================
 
