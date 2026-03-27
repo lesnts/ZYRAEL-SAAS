@@ -223,6 +223,8 @@ def confirmar(call):
     del usuarios[chat_id]
     menu_principal(chat_id)
 
+print("CONFIRMAR EXECUTADO")
+
 # ================= CANCELAR =================
 
 @bot.callback_query_handler(func=lambda c: c.data == "cancelar")
