@@ -1,3 +1,4 @@
+updates_processados = set()
 import os
 import time
 from datetime import datetime, timedelta
@@ -249,25 +250,25 @@ def cancelar(call):
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    global ultimo_update_id
-
     if request.headers.get('content-type') == 'application/json':
         json_string = request.stream.read().decode('utf-8')
         update = telebot.types.Update.de_json(json_string)
 
-        if ultimo_update_id == update.update_id:
+        # 🔒 BLOQUEIO ABSOLUTO DE DUPLICAÇÃO
+        if update.update_id in updates_processados:
             return '', 200
 
-        ultimo_update_id = update.update_id
+        updates_processados.add(update.update_id)
+
+        # evita crescer infinito
+        if len(updates_processados) > 1000:
+            updates_processados.clear()
+
         bot.process_new_updates([update])
 
         return '', 200
 
     return '', 403
-
-@app.route('/', methods=['GET'])
-def check():
-    return "Bot ativo", 200
 
 # ================= DASHBOARD =================
 
