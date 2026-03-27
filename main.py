@@ -1,3 +1,4 @@
+callbacks_processados = set()
 updates_processados = set()
 import os
 import time
@@ -190,22 +191,29 @@ def selecionar_horario(call):
 
 @bot.callback_query_handler(func=lambda c: c.data == "confirmar")
 def confirmar(call):
+
+    # 🔒 BLOQUEIO POR CALLBACK ID
+    if call.id in callbacks_processados:
+        return
+
+    callbacks_processados.add(call.id)
+
     bot.answer_callback_query(call.id)
 
     chat_id = call.message.chat.id
     u = usuarios.get(chat_id)
 
-    if not u or u.get("confirmado"):
+    if not u:
         return
-
-    u["confirmado"] = True
 
     cliente = get_cliente(chat_id)
 
     if horario_ocupado(cliente["id"], u["data"], u["horario"]):
-        bot.edit_message_text("❌ Horário já ocupado.",
-                              chat_id=chat_id,
-                              message_id=call.message.message_id)
+        bot.edit_message_text(
+            "❌ Horário já ocupado.",
+            chat_id=chat_id,
+            message_id=call.message.message_id
+        )
         return
 
     salvar_agendamento(
@@ -224,7 +232,9 @@ def confirmar(call):
         message_id=call.message.message_id
     )
 
-    del usuarios[chat_id]
+    if chat_id in usuarios:
+        del usuarios[chat_id]
+
     menu_principal(chat_id)
 
 # ================= CANCELAR =================
