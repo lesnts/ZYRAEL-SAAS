@@ -1,3 +1,6 @@
+from threading import Lock
+
+lock_updates = Lock()
 callbacks_processados = set()
 updates_processados = set()
 import os
@@ -90,6 +93,7 @@ def agendar(message):
     bot.send_message(message.chat.id, "Qual seu nome?")
 
 # ================= FLUXO (CORRIGIDO) =================
+lock_callbacks = Lock()
 
 callbacks_processados = set()
 
@@ -100,10 +104,11 @@ def callbacks(call):
     if call.id in callbacks_processados:
     key = f"{call.message.message_id}:{call.data}"
 
-if key in callbacks_processados:
-    return
+with lock_callbacks:
+    if key in callbacks_processados:
+        return
 
-callbacks_processados.add(key)
+    callbacks_processados.add(key)
 
     bot.answer_callback_query(call.id)
 
@@ -198,24 +203,23 @@ def processar_update(update):
         
 # ================= WEBHOOK (ANTI DUPLICAÇÃO) =================
 
-from threading import Thread
-
 @app.route('/webhook', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
         json_string = request.stream.read().decode('utf-8')
         update = telebot.types.Update.de_json(json_string)
 
-        # 🔒 anti-duplicação
-        if update.update_id in updates_processados:
-            return '', 200
+        # 🔒 LOCK (ANTI CONCORRÊNCIA)
+        with lock_updates:
+            if update.update_id in updates_processados:
+                return '', 200
 
-        updates_processados.add(update.update_id)
+            updates_processados.add(update.update_id)
 
-        # ⚡ PROCESSA EM THREAD
+        # processa fora do lock
+        from threading import Thread
         Thread(target=processar_update, args=(update,)).start()
 
-        # 🚀 RESPONDE IMEDIATO
         return '', 200
 
     return '', 403
