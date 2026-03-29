@@ -2,3 +2,4 @@ flask
 pyTelegramBotAPI
 mercadopago
 requests
+psycopg2-binary
