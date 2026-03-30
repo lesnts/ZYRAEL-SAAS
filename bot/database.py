@@ -139,3 +139,33 @@ def horario_ocupado(cliente_id, data, horario):
     conn.close()
 
     return resultado is not None
+
+def adquirir_lock(chat_id):
+    conn = conectar()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "INSERT INTO locks (chat_id) VALUES (%s)",
+            (chat_id,)
+        )
+        conn.commit()
+        return True
+    except:
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
+def liberar_lock(chat_id):
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "DELETE FROM locks WHERE chat_id = %s",
+        (chat_id,)
+    )
+
+    conn.commit()
+    conn.close()
