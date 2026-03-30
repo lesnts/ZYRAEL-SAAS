@@ -1,4 +1,4 @@
-print("🔥 AGORA VAI 🔥")
+print("🔥 BOT NOVO RODANDO 🔥")
 import os
 from threading import Thread
 from flask import Flask, request, render_template
