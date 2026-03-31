@@ -1,4 +1,4 @@
-print("🔥 BOT NOVO RODANDO 🔥")
+print("🚀 APP INICIADO COM SUCESSO 🚀")
 import os
 from threading import Thread
 from flask import Flask, request, render_template
