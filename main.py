@@ -240,7 +240,7 @@ def callbacks(call):
     # CANCELAR
 
     @bot.message_handler(func=lambda m: m.text == "❌ Cancelar")
-    def cancelar_menu(message):
+def cancelar_menu(message):
     chat_id = message.chat.id
 
     if chat_id in usuarios:
