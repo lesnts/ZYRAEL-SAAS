@@ -1,10 +1,9 @@
-print("🔥 AGORA REALMENTE FUNCIONANDO 🔥")
 import os
-from threading import Thread
+import time
+from datetime import datetime, timedelta
 from flask import Flask, request, render_template
 import telebot
 from telebot import types
-from datetime import datetime, timedelta
 
 from bot.database import *
 
@@ -18,12 +17,26 @@ criar_tabelas()
 
 usuarios = {}
 
+# 🔒 CONTROLE GLOBAL
+updates_processados = set()
+callbacks_processados = set()
+
 HORARIOS_DISPONIVEIS = ["10:00", "11:00", "14:00", "15:00", "16:00"]
 
 SERVICOS = {
     "Corte": 30,
     "Escova": 40,
     "Progressiva": 120
+}
+
+DIAS_SEMANA = {
+    0: "Segunda",
+    1: "Terça",
+    2: "Quarta",
+    3: "Quinta",
+    4: "Sexta",
+    5: "Sábado",
+    6: "Domingo"
 }
 
 # ================= CLIENTE =================
@@ -45,8 +58,6 @@ def menu_principal(chat_id):
         types.KeyboardButton("❌ Cancelar")
     )
     bot.send_message(chat_id, "Escolha uma opção:", reply_markup=markup)
-
-# ================= START =================
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -72,125 +83,143 @@ def meus_agendamentos(message):
 
     bot.send_message(chat_id, texto)
 
-# ================= INICIAR AGENDAMENTO =================
+# ================= AGENDAR =================
 
 @bot.message_handler(func=lambda m: m.text == "📅 Agendar")
 def agendar(message):
+    usuarios[message.chat.id] = {"etapa": "nome"}
+    bot.send_message(message.chat.id, "Qual seu nome?")
+
+# ================= FLUXO =================
+
+@bot.message_handler(func=lambda m: True)
+def fluxo(message):
     chat_id = message.chat.id
 
-    usuarios[chat_id] = {}
+    if chat_id not in usuarios:
+        return
 
-    markup = types.InlineKeyboardMarkup()
+    u = usuarios[chat_id]
+    etapa = u["etapa"]
 
-    for servico in SERVICOS:
-        markup.add(
-            types.InlineKeyboardButton(
-                servico,
-                callback_data=f"agendar|servico|{servico}"
-            )
-        )
+    if etapa == "nome":
+        u["nome"] = message.text
+        u["etapa"] = "telefone"
+        bot.send_message(chat_id, "Digite seu telefone:")
 
-    bot.send_message(chat_id, "Escolha o serviço:", reply_markup=markup)
+    elif etapa == "telefone":
+        u["telefone"] = message.text
+        u["etapa"] = "servico"
 
-# ================= CALLBACK =================
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        for s, v in SERVICOS.items():
+            markup.add(types.KeyboardButton(f"{s} - R${v}"))
 
-@bot.callback_query_handler(func=lambda c: True)
+        bot.send_message(chat_id, "Escolha o serviço:", reply_markup=markup)
+
+    elif etapa == "servico":
+        nome = message.text.split(" - ")[0]
+
+        if nome not in SERVICOS:
+            return
+
+        u["servico"] = nome
+        u["valor"] = SERVICOS[nome]
+        u["etapa"] = "data"
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        hoje = datetime.now()
+
+        for i in range(7):
+            dia = hoje + timedelta(days=i)
+            texto = f"{DIAS_SEMANA[dia.weekday()]} • {dia.strftime('%d/%m')}"
+            markup.add(types.KeyboardButton(texto))
+
+        bot.send_message(chat_id, "Escolha a data:", reply_markup=markup)
+
+    elif etapa == "data":
+        try:
+            data = message.text.split(" • ")[1] + f"/{datetime.now().year}"
+            u["data"] = data
+            u["etapa"] = "horario"
+
+            cliente = get_cliente(chat_id)
+
+            markup = types.InlineKeyboardMarkup()
+            for h in HORARIOS_DISPONIVEIS:
+                if horario_ocupado(cliente["id"], data, h):
+                    markup.add(types.InlineKeyboardButton(f"{h} ❌", callback_data="ocupado"))
+                else:
+                    markup.add(types.InlineKeyboardButton(f"{h} ✅", callback_data=h))
+
+            bot.send_message(chat_id, "Escolha o horário:", reply_markup=markup)
+
+        except:
+            bot.send_message(chat_id, "Formato inválido.")
+
+# ================= CALLBACKS (ANTI DUPLICAÇÃO) =================
+
+@bot.callback_query_handler(func=lambda call: True)
 def callbacks(call):
+
+    # 🔒 BLOQUEIO DE CLIQUE DUPLO
+    if call.id in callbacks_processados:
+        return
+
+    callbacks_processados.add(call.id)
 
     bot.answer_callback_query(call.id)
 
     chat_id = call.message.chat.id
+    data = call.data
     u = usuarios.get(chat_id)
 
     if not u:
         return
 
-    try:
-        acao, tipo, valor = call.data.split("|")
-    except:
-        return
-
-    # SERVIÇO
-    if tipo == "servico":
-        u["servico"] = valor
-        u["valor"] = SERVICOS[valor]
-
-        markup = types.InlineKeyboardMarkup()
-        hoje = datetime.now()
-
-        for i in range(5):
-            dia = hoje + timedelta(days=i)
-            data = dia.strftime("%Y-%m-%d")
-
-            markup.add(
-                types.InlineKeyboardButton(
-                    dia.strftime("%d/%m"),
-                    callback_data=f"agendar|data|{data}"
-                )
-            )
-
-        bot.edit_message_text(
-            "Escolha a data:",
-            chat_id,
-            call.message.message_id,
-            reply_markup=markup
-        )
-
-    # DATA
-    elif tipo == "data":
-        u["data"] = valor
-
-        markup = types.InlineKeyboardMarkup()
-
-        for h in HORARIOS_DISPONIVEIS:
-            markup.add(
-                types.InlineKeyboardButton(
-                    h,
-                    callback_data=f"agendar|horario|{h}"
-                )
-            )
-
-        bot.edit_message_text(
-            "Escolha o horário:",
-            chat_id,
-            call.message.message_id,
-            reply_markup=markup
-        )
-
     # HORÁRIO
-    elif tipo == "horario":
-        u["horario"] = valor
+    if ":" in data:
+
+        if data == "ocupado":
+            return
+
+        u["horario"] = data
 
         markup = types.InlineKeyboardMarkup()
         markup.add(
-            types.InlineKeyboardButton("✅ Confirmar", callback_data="agendar|confirmar|ok"),
-            types.InlineKeyboardButton("❌ Cancelar", callback_data="agendar|cancelar|ok")
+            types.InlineKeyboardButton("✅ Confirmar", callback_data="confirmar"),
+            types.InlineKeyboardButton("❌ Cancelar", callback_data="cancelar")
         )
 
         bot.edit_message_text(
-            f"Confirmar?\n📅 {u['data']} às {u['horario']}\n💇 {u['servico']}",
-            chat_id,
-            call.message.message_id,
+            f"Confirmar agendamento?\n📅 {u['data']} às {u['horario']}\n💇 {u['servico']}",
+            chat_id=chat_id,
+            message_id=call.message.message_id,
             reply_markup=markup
         )
 
     # CONFIRMAR
-    elif tipo == "confirmar":
+    elif data == "confirmar":
+
+        if u.get("finalizado"):
+            return
+
+        u["finalizado"] = True
 
         cliente = get_cliente(chat_id)
 
         if horario_ocupado(cliente["id"], u["data"], u["horario"]):
             bot.edit_message_text(
-                "❌ Horário já ocupado",
-                chat_id,
-                call.message.message_id
+                "❌ Horário já ocupado.",
+                chat_id=chat_id,
+                message_id=call.message.message_id
             )
             return
 
         salvar_agendamento(
             cliente["id"],
-            "Cliente",
-            "",
+            u["nome"],
+            u["telefone"],
             u["servico"],
             u["valor"],
             u["data"],
@@ -198,27 +227,31 @@ def callbacks(call):
         )
 
         bot.edit_message_text(
-            "✅ Agendado!",
-            chat_id,
-            call.message.message_id
+            f"✅ Agendado!\n📅 {u['data']} às {u['horario']}\n💇 {u['servico']}",
+            chat_id=chat_id,
+            message_id=call.message.message_id
         )
 
-        usuarios.pop(chat_id, None)
+        if chat_id in usuarios:
+            del usuarios[chat_id]
+
         menu_principal(chat_id)
 
     # CANCELAR
-    elif tipo == "cancelar":
-        usuarios.pop(chat_id, None)
+    elif data == "cancelar":
+
+        if chat_id in usuarios:
+            del usuarios[chat_id]
 
         bot.edit_message_text(
-            "❌ Cancelado",
-            chat_id,
-            call.message.message_id
+            "❌ Agendamento cancelado.",
+            chat_id=chat_id,
+            message_id=call.message.message_id
         )
 
         menu_principal(chat_id)
 
-# ================= WEBHOOK =================
+# ================= WEBHOOK (ANTI DUPLICAÇÃO) =================
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -227,40 +260,36 @@ def webhook():
             json_string = request.stream.read().decode('utf-8')
             update = telebot.types.Update.de_json(json_string)
 
+            # 🔒 BLOQUEIO DE UPDATE DUPLICADO
+            if update.update_id in updates_processados:
+                return '', 200
+
+            updates_processados.add(update.update_id)
+
+            if len(updates_processados) > 1000:
+                updates_processados.clear()
+
             bot.process_new_updates([update])
 
             return '', 200
+
         return '', 403
 
     except Exception as e:
-        print("💥 ERRO NO WEBHOOK:", e)
-        return '', 200  # ⚠️ IMPORTANTE
-        
-# ================= DASHBOARD =================
+        print("💥 ERRO WEBHOOK:", e)
+        return '', 200
 
-@app.route("/dashboard/<int:telegram_id>")
-def dashboard(telegram_id):
-    cliente = buscar_cliente(telegram_id)
-
-    if not cliente:
-        return "Cliente não encontrado"
-
-    agendamentos = listar_agendamentos(cliente["id"])
-
-    return render_template(
-        "dashboard.html",
-        cliente=cliente,
-        agendamentos=agendamentos
-    )
+# ================= HOME =================
 
 @app.route('/', methods=['GET'])
 def home():
     return "Bot ativo", 200
-    
-# ================= START APP =================
+
+# ================= START =================
 
 if __name__ == "__main__":
     bot.remove_webhook()
+    time.sleep(1)
     bot.set_webhook(url=WEBHOOK_URL + "/webhook")
 
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
