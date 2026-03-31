@@ -303,3 +303,15 @@ if __name__ == "__main__":
     bot.set_webhook(url=WEBHOOK_URL + "/webhook")
 
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+
+# ================= CANCELAR MENU =================
+
+@bot.message_handler(func=lambda m: m.text == "❌ Cancelar")
+def cancelar_menu(message):
+    chat_id = message.chat.id
+
+    if chat_id in usuarios:
+        usuarios.pop(chat_id, None)
+
+    bot.send_message(chat_id, "❌ Operação cancelada.")
+    menu_principal(chat_id)
