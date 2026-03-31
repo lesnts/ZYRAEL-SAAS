@@ -1,4 +1,4 @@
-print("🚀 APP INICIADO COM SUCESSO 🚀")
+print("🔥 AGORA VAI FUNCIONAR 🔥")
 import os
 from threading import Thread
 from flask import Flask, request, render_template
