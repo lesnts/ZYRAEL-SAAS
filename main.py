@@ -220,24 +220,22 @@ def callbacks(call):
 
 # ================= WEBHOOK =================
 
-def processar_update(update):
-    if update_ja_processado(update.update_id):
-        return
-
-    bot.process_new_updates([update])
-
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.stream.read().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
+    try:
+        if request.headers.get('content-type') == 'application/json':
+            json_string = request.stream.read().decode('utf-8')
+            update = telebot.types.Update.de_json(json_string)
 
-        Thread(target=processar_update, args=(update,)).start()
+            bot.process_new_updates([update])
 
-        return '', 200
+            return '', 200
+        return '', 403
 
-    return '', 403
-
+    except Exception as e:
+        print("💥 ERRO NO WEBHOOK:", e)
+        return '', 200  # ⚠️ IMPORTANTE
+        
 # ================= DASHBOARD =================
 
 @app.route("/dashboard/<int:telegram_id>")
@@ -255,6 +253,10 @@ def dashboard(telegram_id):
         agendamentos=agendamentos
     )
 
+@app.route('/', methods=['GET'])
+def home():
+    return "Bot ativo", 200
+    
 # ================= START APP =================
 
 if __name__ == "__main__":
